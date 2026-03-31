@@ -21,3 +21,4 @@ C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Communi
 C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Community.PowerToys.Run.Plugin.CursorWorkspaces\obj\x64\Release\refint\Community.PowerToys.Run.Plugin.CursorWorkspaces.dll
 C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Community.PowerToys.Run.Plugin.CursorWorkspaces\obj\x64\Release\Community.PowerToys.Run.Plugin.CursorWorkspaces.pdb
 C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Community.PowerToys.Run.Plugin.CursorWorkspaces\obj\x64\Release\ref\Community.PowerToys.Run.Plugin.CursorWorkspaces.dll
+C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Community.PowerToys.Run.Plugin.CursorWorkspaces\obj\x64\Release\Community.PowerToys.Run.Plugin.CursorWorkspaces.sourcelink.json

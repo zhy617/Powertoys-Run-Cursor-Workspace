@@ -1,0 +1,6 @@
+C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Community.PowerToys.Run.Plugin.CursorWorkspaces\obj\Release\Community.PowerToys.Run.Plugin.CursorWorkspaces.csproj.AssemblyReference.cache
+C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Community.PowerToys.Run.Plugin.CursorWorkspaces\obj\Release\Community.PowerToys.Run.Plugin.CursorWorkspaces.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Community.PowerToys.Run.Plugin.CursorWorkspaces\obj\Release\Community.PowerToys.Run.Plugin.CursorWorkspaces.AssemblyInfoInputs.cache
+C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Community.PowerToys.Run.Plugin.CursorWorkspaces\obj\Release\Community.PowerToys.Run.Plugin.CursorWorkspaces.AssemblyInfo.cs
+C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Community.PowerToys.Run.Plugin.CursorWorkspaces\obj\Release\Community.PowerToys.Run.Plugin.CursorWorkspaces.csproj.CoreCompileInputs.cache
+C:\Users\13183\Documents\Repositories\Powertoys-Run-Cursor-Workspace\src\Community.PowerToys.Run.Plugin.CursorWorkspaces\obj\Release\Community.PowerToys.Run.Plugin.CursorWorkspaces.sourcelink.json

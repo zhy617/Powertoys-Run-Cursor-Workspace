@@ -1,7 +1,12 @@
+using System.Text.RegularExpressions;
+
 namespace Community.PowerToys.Run.Plugin.CursorWorkspaces.WorkspacesHelper;
 
 public static class ParseAuthority
 {
+    /// <summary>Windows 上 <c>file://C:/path</c>（两斜杠）会把盘符解析到 authority，需视为本地。</summary>
+    private static readonly Regex WindowsDriveAuthority = new(@"^[a-zA-Z]:$", RegexOptions.Compiled);
+
     private static readonly Dictionary<string, WorkspaceEnvironment> EnvironmentTypes = new()
     {
         { string.Empty, WorkspaceEnvironment.Local },
@@ -30,8 +35,17 @@ public static class ParseAuthority
         string? machineName = authority is not null && remoteName.Length < authority.Length
             ? authority[(remoteName.Length + 1)..]
             : null;
+
+        if (WindowsDriveAuthority.IsMatch(remoteName))
+        {
+            return (WorkspaceEnvironment.Local, machineName);
+        }
+
         return EnvironmentTypes.TryGetValue(remoteName, out WorkspaceEnvironment workspace)
             ? (workspace, machineName)
             : (null, null);
     }
+
+    public static bool IsWindowsFileDriveAuthority(string? authority) =>
+        authority is not null && WindowsDriveAuthority.IsMatch(authority);
 }

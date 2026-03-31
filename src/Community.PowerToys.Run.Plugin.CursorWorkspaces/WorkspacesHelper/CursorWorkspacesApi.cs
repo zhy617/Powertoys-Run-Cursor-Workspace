@@ -31,7 +31,15 @@ public sealed class CursorWorkspacesApi
 
         if (workspaceEnv == WorkspaceEnvironment.Local)
         {
-            localPath = localPath[1..];
+            var auth = authority ?? rfc3986Uri.Authority;
+            if (ParseAuthority.IsWindowsFileDriveAuthority(auth))
+            {
+                localPath = auth + localPath;
+            }
+            else
+            {
+                localPath = localPath[1..];
+            }
         }
 
         if (!DoesPathExist(localPath, workspaceEnv.Value))

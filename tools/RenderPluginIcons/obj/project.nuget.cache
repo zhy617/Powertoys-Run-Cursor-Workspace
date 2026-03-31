@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "S1d38JAxha4=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\13183\\Documents\\Repositories\\Powertoys-Run-Cursor-Workspace\\tools\\RenderPluginIcons\\RenderPluginIcons.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\13183\\.nuget\\packages\\microsoft.win32.systemevents\\8.0.0\\microsoft.win32.systemevents.8.0.0.nupkg.sha512",
+    "C:\\Users\\13183\\.nuget\\packages\\system.drawing.common\\8.0.10\\system.drawing.common.8.0.10.nupkg.sha512"
+  ],
+  "logs": []
+}

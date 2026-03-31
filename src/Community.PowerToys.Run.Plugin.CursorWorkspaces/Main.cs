@@ -22,19 +22,49 @@ public class Main : IPlugin, IPluginI18n, IContextMenu
 
     private readonly CursorWorkspacesApi _workspacesApi = new();
 
-    public Main()
+    private static readonly object _loadLock = new();
+    private static bool _instancesLoaded;
+
+    /// <summary>
+    /// PowerToys 可能在非 STA 线程上构造插件；构造函数内创建 WPF <see cref="System.Windows.Media.Imaging.BitmapImage"/> 会抛错并导致「插件初始化错误」。
+    /// 改为在首次 <see cref="Query"/>（通常在 STA）时再加载 Cursor 实例与图标。
+    /// </summary>
+    private void EnsureCursorInstancesLoaded()
     {
-        CursorInstances.LoadCursorInstances();
+        lock (_loadLock)
+        {
+            if (_instancesLoaded)
+            {
+                return;
+            }
+
+            try
+            {
+                CursorInstances.LoadCursorInstances();
+            }
+            catch (Exception ex)
+            {
+                Log.Exception("Cursor 工作区：加载 Cursor 实例失败。", ex, typeof(Main));
+            }
+            finally
+            {
+                _instancesLoaded = true;
+            }
+        }
     }
 
     public List<Result> Query(Query query)
     {
+        EnsureCursorInstancesLoaded();
+
         var results = new List<Result>();
 
         if (query is null)
         {
             return results;
         }
+
+        var search = query.Search?.Trim() ?? string.Empty;
 
         var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var a in _workspacesApi.Workspaces)
@@ -94,7 +124,7 @@ public class Main : IPlugin, IPluginI18n, IContextMenu
             });
         }
 
-        results = results.Where(r => r.Title.Contains(query.Search, StringComparison.InvariantCultureIgnoreCase)).ToList();
+        results = results.Where(r => r.Title.Contains(search, StringComparison.InvariantCultureIgnoreCase)).ToList();
 
         foreach (var x in results)
         {
@@ -103,13 +133,13 @@ public class Main : IPlugin, IPluginI18n, IContextMenu
                 x.Score = 100;
             }
 
-            var intersection = Convert.ToInt32(x.Title.ToLowerInvariant().Intersect(query.Search.ToLowerInvariant()).Count() * query.Search.Length);
-            var differenceWithQuery = Convert.ToInt32((x.Title.Length - intersection) * query.Search.Length * 0.7);
+            var intersection = Convert.ToInt32(x.Title.ToLowerInvariant().Intersect(search.ToLowerInvariant()).Count() * search.Length);
+            var differenceWithQuery = Convert.ToInt32((x.Title.Length - intersection) * search.Length * 0.7);
             x.Score = x.Score - differenceWithQuery + intersection;
         }
 
         results = results.OrderByDescending(x => x.Score).ToList();
-        if (string.IsNullOrWhiteSpace(query.Search))
+        if (string.IsNullOrEmpty(search))
         {
             results = results.OrderBy(x => x.Title).ToList();
         }
