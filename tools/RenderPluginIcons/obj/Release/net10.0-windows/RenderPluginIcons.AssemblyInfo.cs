@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RenderPluginIcons")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c77745151c4080e45ea52e6205996fd239d292c4")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+071da14979f32a788758d7d766559b0d075e76f6")]
 [assembly: System.Reflection.AssemblyProductAttribute("RenderPluginIcons")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RenderPluginIcons")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
