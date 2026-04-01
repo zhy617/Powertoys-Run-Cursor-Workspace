@@ -96,7 +96,9 @@ public class Main : IPlugin, IPluginI18n, IContextMenu
             {
                 Title = title,
                 SubTitle = subtitle,
-                Icon = () => a.CursorInstance.WorkspaceIcon,
+                IcoPath = a.WorkspaceEnvironment != WorkspaceEnvironment.Local
+                    ? a.CursorInstance.RemoteIcoPath
+                    : a.CursorInstance.WorkspaceIcoPath,
                 ToolTipData = tooltip,
                 Action = _ =>
                 {

@@ -2,6 +2,8 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows.Media.Imaging;
 
 namespace Community.PowerToys.Run.Plugin.CursorWorkspaces.CursorHelper;
@@ -13,22 +15,6 @@ public static class CursorInstances
     private static readonly string UserProfilePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     public static List<CursorInstance> Instances { get; } = new();
-
-    private static BitmapImage BitmapToBitmapImage(Bitmap bitmap)
-    {
-        using var memory = new MemoryStream();
-        bitmap.Save(memory, ImageFormat.Png);
-        memory.Position = 0;
-
-        var bitmapImage = new BitmapImage();
-        bitmapImage.BeginInit();
-        bitmapImage.StreamSource = memory;
-        bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-        bitmapImage.EndInit();
-        bitmapImage.Freeze();
-
-        return bitmapImage;
-    }
 
     private static BitmapImage BitmapImageFromFile(string absolutePath)
     {
@@ -235,6 +221,16 @@ public static class CursorInstances
         return roamingDefault;
     }
 
+    /// <summary>
+    /// PowerToys Run 的 Result.Icon 委托在异步加载后于非 UI 线程赋值，易导致图标无法绘制（显示为纯色块）。
+    /// 使用绝对路径 Result.IcoPath 走 ImageLoader.LoadAsync 可正常显示。
+    /// </summary>
+    private static string GetStableShortId(string exePath)
+    {
+        byte[] bytes = SHA256.HashData(Encoding.UTF8.GetBytes(exePath));
+        return Convert.ToHexString(bytes.AsSpan(0, 8));
+    }
+
     private static CursorInstance? TryCreateInstance(string file)
     {
         if (!File.Exists(file))
@@ -252,8 +248,16 @@ public static class CursorInstances
             return null;
         }
 
+        string cacheDir = Path.Combine(pluginDir, "IconCache");
+        Directory.CreateDirectory(cacheDir);
+        string id = GetStableShortId(file);
+        string wsIcoPath = Path.Combine(cacheDir, $"{id}.ws.png");
+        string rmIcoPath = Path.Combine(cacheDir, $"{id}.remote.png");
+
         BitmapImage workspaceBitmap;
         BitmapImage remoteBitmap;
+        string workspaceIcoPathForResult;
+        string remoteIcoPathForResult;
 
         try
         {
@@ -267,14 +271,26 @@ public static class CursorInstances
                 using var bitmapFolderIcon = BitmapOverlayToCenter(folderIcon, cursorIconBitmap);
                 using var monitorIcon = (Bitmap)Image.FromFile(monitorPng);
                 using var bitmapMonitorIcon = BitmapOverlayToCenter(monitorIcon, cursorIconBitmap);
-                workspaceBitmap = BitmapToBitmapImage(bitmapFolderIcon);
-                remoteBitmap = BitmapToBitmapImage(bitmapMonitorIcon);
+                bitmapFolderIcon.Save(wsIcoPath, ImageFormat.Png);
+                bitmapMonitorIcon.Save(rmIcoPath, ImageFormat.Png);
+                workspaceBitmap = BitmapImageFromFile(wsIcoPath);
+                remoteBitmap = BitmapImageFromFile(rmIcoPath);
             }
             else
             {
-                workspaceBitmap = BitmapToBitmapImage((Bitmap)cursorIconBitmap.Clone());
-                remoteBitmap = BitmapToBitmapImage((Bitmap)cursorIconBitmap.Clone());
+                using (var wsBmp = (Bitmap)cursorIconBitmap.Clone())
+                using (var rmBmp = (Bitmap)cursorIconBitmap.Clone())
+                {
+                    wsBmp.Save(wsIcoPath, ImageFormat.Png);
+                    rmBmp.Save(rmIcoPath, ImageFormat.Png);
+                }
+
+                workspaceBitmap = BitmapImageFromFile(wsIcoPath);
+                remoteBitmap = BitmapImageFromFile(rmIcoPath);
             }
+
+            workspaceIcoPathForResult = wsIcoPath;
+            remoteIcoPathForResult = rmIcoPath;
         }
         catch
         {
@@ -287,12 +303,16 @@ public static class CursorInstances
 
             workspaceBitmap = BitmapImageFromFile(dark);
             remoteBitmap = File.Exists(light) ? BitmapImageFromFile(light) : workspaceBitmap;
+            workspaceIcoPathForResult = dark;
+            remoteIcoPathForResult = File.Exists(light) ? light : dark;
         }
 
         return new CursorInstance
         {
             ExecutablePath = file,
             AppData = appData,
+            WorkspaceIcoPath = workspaceIcoPathForResult,
+            RemoteIcoPath = remoteIcoPathForResult,
             WorkspaceIconBitMap = workspaceBitmap,
             RemoteIconBitMap = remoteBitmap,
         };
