@@ -98,8 +98,7 @@ public static class CursorInstances
 
         foreach (var file in resolvedExe)
         {
-            var instance = TryCreateInstance(file);
-            if (instance != null)
+            foreach (var instance in TryCreateInstancesForExecutable(file))
             {
                 Instances.Add(instance);
             }
@@ -184,7 +183,62 @@ public static class CursorInstances
         return false;
     }
 
-    private static string ResolveCursorAppDataRoot(string installDir)
+    /// <summary>
+    /// 同一 Cursor.exe 可能对应多套用户数据：Scoop 的 <c>current\data\user-data</c>、<c>%APPDATA%\Cursor</c>、<c>persist\cursor</c> 等。
+    /// 旧逻辑只选其中一套（便携优先），会漏掉 Roaming 里真实在用的工作区。此处按顺序全部纳入并去重。
+    /// </summary>
+    private static List<string> EnumerateCursorAppDataRoots(string installDir)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var list = new List<string>();
+
+        void AddIfHasData(string? root)
+        {
+            if (string.IsNullOrEmpty(root))
+            {
+                return;
+            }
+
+            string full = Path.GetFullPath(root);
+            if (!HasCursorUserData(full) || !seen.Add(full))
+            {
+                return;
+            }
+
+            list.Add(full);
+        }
+
+        // 1) Roaming：多数「正式」数据（含远程 workspaceStorage）在这里
+        AddIfHasData(Path.Combine(UserAppDataPath, "Cursor"));
+
+        // 2) 安装目录旁便携（Scoop current 下常有，且会被旧逻辑优先选中）
+        string portableUserData = Path.Join(installDir, "data", "user-data");
+        AddIfHasData(portableUserData);
+
+        // 3) Scoop persist
+        foreach (var scoopRoot in new[] { Path.Combine(UserProfilePath, "scoop"), Environment.GetEnvironmentVariable("SCOOP") }.Where(s => !string.IsNullOrEmpty(s)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            string persist = Path.Combine(scoopRoot!, "persist", "cursor");
+            AddIfHasData(persist);
+
+            string persistUserData = Path.Combine(persist, "data", "user-data");
+            AddIfHasData(persistUserData);
+        }
+
+        string globalPersist = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "scoop", "persist", "cursor");
+        AddIfHasData(globalPersist);
+
+        if (list.Count > 0)
+        {
+            return list;
+        }
+
+        // 无任何「像样」数据目录时，沿用单一路径回退（与旧版行为一致，便于至少能启动插件）
+        list.Add(ResolveCursorAppDataRootFallback(installDir));
+        return list;
+    }
+
+    private static string ResolveCursorAppDataRootFallback(string installDir)
     {
         string portableData = Path.Join(installDir, "data");
         string portableUserData = Path.Join(portableData, "user-data");
@@ -199,7 +253,6 @@ public static class CursorInstances
             return roamingDefault;
         }
 
-        // Scoop persist：常把 %APPDATA%\Cursor 等价内容放在 persist\cursor
         foreach (var scoopRoot in new[] { Path.Combine(UserProfilePath, "scoop"), Environment.GetEnvironmentVariable("SCOOP") }.Where(s => !string.IsNullOrEmpty(s)).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             string persist = Path.Combine(scoopRoot!, "persist", "cursor");
@@ -244,21 +297,21 @@ public static class CursorInstances
         return Convert.ToHexString(bytes.AsSpan(0, 8));
     }
 
-    private static CursorInstance? TryCreateInstance(string file)
+    private static IEnumerable<CursorInstance> TryCreateInstancesForExecutable(string file)
     {
         if (!File.Exists(file))
         {
-            return null;
+            yield break;
         }
 
         string iconDir = Path.GetDirectoryName(file.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) ?? string.Empty;
-        string appData = ResolveCursorAppDataRoot(iconDir);
+        var appDataRoots = EnumerateCursorAppDataRoots(iconDir);
         string pluginDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? string.Empty;
 
         using Icon? cursorIcon = Icon.ExtractAssociatedIcon(file);
         if (cursorIcon is null)
         {
-            return null;
+            yield break;
         }
 
         string cacheDir = Path.Combine(pluginDir, "IconCache");
@@ -311,7 +364,7 @@ public static class CursorInstances
             string light = Path.Combine(pluginDir, "Images", "cursor.light.png");
             if (!File.Exists(dark))
             {
-                return null;
+                yield break;
             }
 
             workspaceBitmap = BitmapImageFromFile(dark);
@@ -320,14 +373,17 @@ public static class CursorInstances
             remoteIcoPathForResult = File.Exists(light) ? light : dark;
         }
 
-        return new CursorInstance
+        foreach (string appData in appDataRoots)
         {
-            ExecutablePath = file,
-            AppData = appData,
-            WorkspaceIcoPath = workspaceIcoPathForResult,
-            RemoteIcoPath = remoteIcoPathForResult,
-            WorkspaceIconBitMap = workspaceBitmap,
-            RemoteIconBitMap = remoteBitmap,
-        };
+            yield return new CursorInstance
+            {
+                ExecutablePath = file,
+                AppData = appData,
+                WorkspaceIcoPath = workspaceIcoPathForResult,
+                RemoteIcoPath = remoteIcoPathForResult,
+                WorkspaceIconBitMap = workspaceBitmap,
+                RemoteIconBitMap = remoteBitmap,
+            };
+        }
     }
 }

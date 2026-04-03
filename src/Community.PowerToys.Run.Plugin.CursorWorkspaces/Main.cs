@@ -9,6 +9,9 @@ using Wox.Infrastructure;
 using Wox.Plugin;
 using Wox.Plugin.Logger;
 
+using System.IO;
+using System.Text;
+
 namespace Community.PowerToys.Run.Plugin.CursorWorkspaces;
 
 public class Main : IPlugin, IPluginI18n, IContextMenu
@@ -57,6 +60,26 @@ public class Main : IPlugin, IPluginI18n, IContextMenu
     public List<Result> Query(Query query)
     {
         EnsureCursorInstancesLoaded();
+        
+        // 调试用的，静默失败即可
+        // try
+        // {
+        //     var logPath = Path.Combine(Path.GetTempPath(), "CursorWorkspacesPlugin-debug.txt");
+        //     var sb = new StringBuilder();
+        //     sb.AppendLine("=== " + DateTime.Now.ToString("o") + " ===");
+        //     sb.AppendLine("InstanceCount=" + CursorInstances.Instances.Count);
+        //     foreach (var inst in CursorInstances.Instances)
+        //     {
+        //         sb.AppendLine("AppData=" + inst.AppData);
+        //         sb.AppendLine("Exe=" + inst.ExecutablePath);
+        //     }
+
+        //     File.AppendAllText(logPath, sb.ToString() + Environment.NewLine);
+        // }
+        // catch
+        // {
+        //     // 调试用的，静默失败即可
+        // }
 
         var results = new List<Result>();
 

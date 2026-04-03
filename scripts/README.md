@@ -18,7 +18,7 @@ dotnet build CursorWorkspaces.sln -c Release -p:Platform=x64
 .\scripts\pack-dist.ps1 -Version 1.0.0
 
 # 先构建再打包
-.\scripts\pack-dist.ps1 -Version 2.3.4 -Build
+.\scripts\pack-dist.ps1 -Version 1.1.0 -Build
 ```
 
 生成 SHA256
@@ -33,7 +33,7 @@ Get-ChildItem .\dist\* | ForEach-Object {
 # Release
 ## Win
 ```shell
-$VERSION = "v1.0.0"
+$VERSION = "v1.1.0"
 gh release create $VERSION `
   --title "$VERSION" `
   --notes-file .\scripts\RELEASE_NOTES.md `

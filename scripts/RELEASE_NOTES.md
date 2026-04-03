@@ -1,1 +1,2 @@
-- Powertoys Run 的 Cursor Workspace 插件堂堂出世，本项目全部用 Agent 实现
+- Add the hostname display of ssh instance
+- Fix the missing workspace of ssh instance

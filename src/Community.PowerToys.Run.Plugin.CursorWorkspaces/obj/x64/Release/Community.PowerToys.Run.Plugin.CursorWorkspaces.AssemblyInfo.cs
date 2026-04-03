@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Community.PowerToys.Run.Plugin.CursorWorkspaces")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ee63543680a2cc38e19f7a2407cc3fb85d633f22")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9c0847c8637cc693abbe3dc2736f90196a834943")]
 [assembly: System.Reflection.AssemblyProductAttribute("Community.PowerToys.Run.Plugin.CursorWorkspaces")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Community.PowerToys.Run.Plugin.CursorWorkspaces")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
