@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Input;
 using Community.PowerToys.Run.Plugin.CursorWorkspaces.CursorHelper;
@@ -66,29 +67,28 @@ public class Main : IPlugin, IPluginI18n, IContextMenu
 
         var search = query.Search?.Trim() ?? string.Empty;
 
-        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // folderUri 在远程场景下可能与 remoteAuthority 拆开存储；仅按 Path 去重会合并不同 SSH 主机上的同一路径。
+        var seenWorkspaceKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var a in _workspacesApi.Workspaces)
         {
-            if (!seenPaths.Add(a.Path))
+            var dedupKey = $"{a.Path}\u0001{a.RemoteAuthority ?? string.Empty}";
+            if (!seenWorkspaceKeys.Add(dedupKey))
             {
                 continue;
             }
 
-            var title = a.WorkspaceType == WorkspaceType.ProjectFolder
-                ? a.FolderName
-                : a.FolderName.Replace(".code-workspace", $" ({PluginStrings.Workspace})", StringComparison.OrdinalIgnoreCase);
-
             var typeWorkspace = a.WorkspaceEnvironmentToString();
-            if (a.WorkspaceEnvironment != WorkspaceEnvironment.Local)
-            {
-                title = $"{title}{(a.ExtraInfo != null ? $" - {a.ExtraInfo}" : string.Empty)} ({typeWorkspace})";
-            }
+            var title = BuildWorkspaceResultTitle(a, typeWorkspace);
 
             string realPath = SystemPath.RealPath(a.RelativePath);
             string kind = a.WorkspaceType == WorkspaceType.WorkspaceFile ? PluginStrings.Workspace : PluginStrings.ProjectFolder;
             string subtitle = a.WorkspaceEnvironment != WorkspaceEnvironment.Local
                 ? $"{kind} {PluginStrings.In} {typeWorkspace}: {realPath}"
                 : $"{kind}: {realPath}";
+            if (a.IsFromSshConfigOnly)
+            {
+                subtitle = $"{subtitle} · {PluginStrings.SshConfigHostOnly}";
+            }
 
             var tooltip = new ToolTipData(title, subtitle);
 
@@ -126,7 +126,7 @@ public class Main : IPlugin, IPluginI18n, IContextMenu
             });
         }
 
-        results = results.Where(r => r.Title.Contains(search, StringComparison.InvariantCultureIgnoreCase)).ToList();
+        results = results.Where(r => MatchesWorkspaceSearch(r.Title, r.SubTitle, search)).ToList();
 
         foreach (var x in results)
         {
@@ -135,18 +135,123 @@ public class Main : IPlugin, IPluginI18n, IContextMenu
                 x.Score = 100;
             }
 
-            var intersection = Convert.ToInt32(x.Title.ToLowerInvariant().Intersect(search.ToLowerInvariant()).Count() * search.Length);
-            var differenceWithQuery = Convert.ToInt32((x.Title.Length - intersection) * search.Length * 0.7);
+            var haystack = (x.Title + " " + x.SubTitle).ToLowerInvariant();
+            var intersection = Convert.ToInt32(haystack.Intersect(search.ToLowerInvariant()).Count() * search.Length);
+            var differenceWithQuery = Convert.ToInt32((haystack.Length - intersection) * search.Length * 0.7);
             x.Score = x.Score - differenceWithQuery + intersection;
         }
 
-        results = results.OrderByDescending(x => x.Score).ToList();
         if (string.IsNullOrEmpty(search))
         {
             results = results.OrderBy(x => x.Title).ToList();
         }
+        else
+        {
+            // 路径较长的工作区（如 .../deepseek-vl2-bridge）在字符交集打分下会输给短标题；优先「标题含完整搜索词」。
+            results = results
+                .OrderByDescending(r => r.Title.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(x => x.Score)
+                .ToList();
+        }
 
         return results;
+    }
+
+    private static string BuildWorkspaceResultTitle(CursorWorkspace a, string typeWorkspace)
+    {
+        if (a.WorkspaceType == WorkspaceType.WorkspaceFile)
+        {
+            string baseName = a.FolderName.Replace(".code-workspace", $" ({PluginStrings.Workspace})", StringComparison.OrdinalIgnoreCase);
+            if (a.WorkspaceEnvironment == WorkspaceEnvironment.Local)
+            {
+                return baseName;
+            }
+
+            if (a.WorkspaceEnvironment == WorkspaceEnvironment.RemoteSSH)
+            {
+                return BuildSshRemoteTitle(a, baseName);
+            }
+
+            return $"{baseName}{(a.ExtraInfo != null ? $" - {a.ExtraInfo}" : string.Empty)} ({typeWorkspace})";
+        }
+
+        if (a.WorkspaceEnvironment == WorkspaceEnvironment.Local)
+        {
+            return a.FolderName;
+        }
+
+        if (a.WorkspaceEnvironment == WorkspaceEnvironment.RemoteSSH)
+        {
+            return BuildSshRemoteTitle(a, a.FolderName);
+        }
+
+        return $"{a.FolderName}{(a.ExtraInfo != null ? $" - {a.ExtraInfo}" : string.Empty)} ({typeWorkspace})";
+    }
+
+    /// <summary>与 Cursor 最近打开一致：优先其 <c>label</c>；否则为「远程目录 [SSH: 主机]」。</summary>
+    private static string BuildSshRemoteTitle(CursorWorkspace a, string folderNameFallbackWhenNoPath)
+    {
+        if (!string.IsNullOrWhiteSpace(a.CursorLabel))
+        {
+            return a.CursorLabel.Trim();
+        }
+
+        string pathPart = FormatSshRemotePathForDisplay(a.RelativePath);
+        if (string.IsNullOrEmpty(pathPart))
+        {
+            pathPart = folderNameFallbackWhenNoPath;
+        }
+
+        string host = string.IsNullOrEmpty(a.ExtraInfo) ? "SSH" : a.ExtraInfo;
+        return $"{pathPart} [SSH: {host}]";
+    }
+
+    /// <summary>将 URI 中的 Unix 路径展示为带 <c>~</c> 的家目录简写（例如 <c>/root/foo</c> → <c>~/foo</c>）。</summary>
+    private static string FormatSshRemotePathForDisplay(string relativePath)
+    {
+        if (string.IsNullOrEmpty(relativePath) || relativePath == "/")
+        {
+            return "~";
+        }
+
+        string p = relativePath.TrimEnd('/');
+        if (p.StartsWith("/root/", StringComparison.Ordinal) && p.Length > 6)
+        {
+            return "~/" + p[6..].TrimStart('/');
+        }
+
+        return p;
+    }
+
+    /// <summary>
+    /// SSH 标题形如 <c>~/DeepSeek-VL2 [SSH: DeepSeekVL2-80G]</c>；整段 <c>Contains</c> 可匹配 48G/80G 等后缀。
+    /// 否则要求搜索中的字母数字片段均在标题或副标题中出现。
+    /// </summary>
+    private static bool MatchesWorkspaceSearch(string title, string? subtitle, string search)
+    {
+        if (string.IsNullOrEmpty(search))
+        {
+            return true;
+        }
+
+        var hay = $"{title} {subtitle ?? string.Empty}";
+        if (hay.Contains(search, StringComparison.InvariantCultureIgnoreCase))
+        {
+            return true;
+        }
+
+        var tokens = Regex.Matches(search, @"[A-Za-z0-9][A-Za-z0-9\-]*")
+            .Select(m => m.Value)
+            .Where(t => t.Length >= 2)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (tokens.Count == 0)
+        {
+            return hay.Contains(search, StringComparison.InvariantCultureIgnoreCase);
+        }
+
+        return tokens.All(t => hay.Contains(t, StringComparison.InvariantCultureIgnoreCase));
     }
 
     public void Init(PluginInitContext context)

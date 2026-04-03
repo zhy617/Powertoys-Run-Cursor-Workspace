@@ -15,66 +15,22 @@ public sealed class CursorWorkspacesApi
             return null;
         }
 
-        var rfc3986Uri = Rfc3986Uri.Parse(Uri.UnescapeDataString(uri));
-        if (rfc3986Uri is null)
+        if (!WorkspaceUriCore.TryCreateWorkspace(uri, authority, isWorkspace, out var parts, out _))
         {
             return null;
-        }
-
-        var (workspaceEnv, machineName) = ParseAuthority.GetWorkspaceEnvironment(authority ?? rfc3986Uri.Authority);
-        if (workspaceEnv is null)
-        {
-            return null;
-        }
-
-        var localPath = rfc3986Uri.Path;
-
-        if (workspaceEnv == WorkspaceEnvironment.Local)
-        {
-            var auth = authority ?? rfc3986Uri.Authority;
-            if (ParseAuthority.IsWindowsFileDriveAuthority(auth))
-            {
-                localPath = auth + localPath;
-            }
-            else
-            {
-                localPath = localPath[1..];
-            }
-        }
-
-        if (!DoesPathExist(localPath, workspaceEnv.Value))
-        {
-            return null;
-        }
-
-        var folderName = System.IO.Path.GetFileName(localPath);
-
-        if (string.IsNullOrEmpty(folderName))
-        {
-            var dirInfo = new DirectoryInfo(localPath);
-            folderName = dirInfo.Name.TrimEnd(':');
         }
 
         return new CursorWorkspace
         {
             Path = uri,
-            WorkspaceType = isWorkspace ? WorkspaceType.WorkspaceFile : WorkspaceType.ProjectFolder,
-            RelativePath = localPath,
-            FolderName = folderName,
-            ExtraInfo = machineName,
-            WorkspaceEnvironment = workspaceEnv.Value,
+            RemoteAuthority = parts!.RemoteAuthority,
+            WorkspaceType = parts.WorkspaceType,
+            RelativePath = parts.RelativePath,
+            FolderName = parts.FolderName,
+            ExtraInfo = parts.ExtraInfo,
+            WorkspaceEnvironment = parts.WorkspaceEnvironment,
             CursorInstance = cursorInstance,
         };
-    }
-
-    private static bool DoesPathExist(string path, WorkspaceEnvironment workspaceEnv)
-    {
-        if (workspaceEnv == WorkspaceEnvironment.Local)
-        {
-            return Directory.Exists(path) || File.Exists(path);
-        }
-
-        return true;
     }
 
     public List<CursorWorkspace> Workspaces
@@ -85,21 +41,84 @@ public sealed class CursorWorkspacesApi
 
             foreach (var cursorInstance in CursorInstances.Instances)
             {
-                var storageJson = Path.Combine(cursorInstance.AppData, "storage.json");
+                var batch = new List<CursorWorkspace>();
+
                 var stateDb = Path.Combine(cursorInstance.AppData, "User", "globalStorage", "state.vscdb");
 
-                if (File.Exists(storageJson))
+                foreach (var storageJson in GetCursorStorageJsonFilePaths(cursorInstance.AppData))
                 {
-                    results.AddRange(GetWorkspacesInJson(cursorInstance, storageJson));
+                    batch.AddRange(GetWorkspacesInJson(cursorInstance, storageJson));
                 }
 
                 if (File.Exists(stateDb))
                 {
-                    results.AddRange(GetWorkspacesInVscdb(cursorInstance, stateDb));
+                    batch.AddRange(GetWorkspacesInVscdb(cursorInstance, stateDb));
                 }
+
+                batch.AddRange(GetWorkspacesFromWorkspaceStorage(cursorInstance));
+                results.AddRange(batch);
+            }
+
+            // 必须在「所有」实例的 workspaceStorage / 历史都合并后再判断：否则多 Cursor.exe（Scoop/商店等）
+            // 时，先处理的实例可能没有该主机缓存，会误加 ssh config 占位项并标成「尚未打开」。
+            var globalKnownSshHosts = CollectKnownSshHostAliases(results);
+            foreach (var cursorInstance in CursorInstances.Instances)
+            {
+                results.AddRange(GetWorkspacesFromOpenSshConfig(cursorInstance, globalKnownSshHosts));
             }
 
             return results;
+        }
+    }
+
+    private static HashSet<string> CollectKnownSshHostAliases(IEnumerable<CursorWorkspace> workspaces)
+    {
+        var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var w in workspaces)
+        {
+            if (w.WorkspaceEnvironment != WorkspaceEnvironment.RemoteSSH)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(w.ExtraInfo))
+            {
+                known.Add(w.ExtraInfo);
+            }
+
+            string? fromUri = ParseAuthority.TryGetHostNameFromVscodeRemoteFolderUri(w.Path);
+            if (!string.IsNullOrEmpty(fromUri))
+            {
+                known.Add(fromUri);
+            }
+        }
+
+        return known;
+    }
+
+    /// <summary>
+    /// 与 VS Code / Cursor 一致：主文件在 <c>User/globalStorage/storage.json</c>；部分便携/旧版在数据根目录的 <c>storage.json</c>。
+    /// Scoop 版数据目录仍由 <see cref="CursorInstances.ResolveCursorAppDataRoot"/> 解析（Roaming 或 persist），与安装方式无关。
+    /// </summary>
+    private static IEnumerable<string> GetCursorStorageJsonFilePaths(string appDataRoot)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in new[]
+        {
+            Path.Combine(appDataRoot, "User", "globalStorage", "storage.json"),
+            Path.Combine(appDataRoot, "storage.json"),
+        })
+        {
+            if (!File.Exists(candidate))
+            {
+                continue;
+            }
+
+            string full = Path.GetFullPath(candidate);
+            if (seen.Add(full))
+            {
+                yield return candidate;
+            }
         }
     }
 
@@ -112,47 +131,32 @@ public sealed class CursorWorkspacesApi
         try
         {
             var storageFile = JsonSerializer.Deserialize<VSCodeStorageFile>(fileContent);
-
-            if (storageFile?.OpenedPathsList is null)
+            if (storageFile is null)
             {
                 return storageFileResults;
             }
 
-            if (storageFile.OpenedPathsList.Workspaces3 is not null)
+            if (storageFile.OpenedPathsList is not null)
             {
-                foreach (var workspaceUri in storageFile.OpenedPathsList.Workspaces3)
+                if (storageFile.OpenedPathsList.Workspaces3 is not null)
                 {
-                    var workspace = ParseUriAndAuthority(workspaceUri, null, cursorInstance);
-                    if (workspace != null)
+                    foreach (var workspaceUri in storageFile.OpenedPathsList.Workspaces3)
                     {
-                        storageFileResults.Add(workspace);
+                        var workspace = ParseUriAndAuthority(workspaceUri, null, cursorInstance);
+                        if (workspace != null)
+                        {
+                            storageFileResults.Add(workspace);
+                        }
                     }
                 }
+
+                AppendWorkspacesFromWorkspaceEntries(storageFileResults, storageFile.OpenedPathsList.Entries, cursorInstance);
             }
 
-            if (storageFile.OpenedPathsList.Entries is not null)
+            if (storageFile.BackupWorkspaces is not null)
             {
-                foreach (var entry in storageFile.OpenedPathsList.Entries)
-                {
-                    bool isWorkspaceFile = false;
-                    var uri = entry.FolderUri;
-                    if (entry.Workspace?.ConfigPath is not null)
-                    {
-                        isWorkspaceFile = true;
-                        uri = entry.Workspace.ConfigPath;
-                    }
-
-                    if (uri is null)
-                    {
-                        continue;
-                    }
-
-                    var workspace = ParseUriAndAuthority(uri, entry.RemoteAuthority, cursorInstance, isWorkspaceFile);
-                    if (workspace != null)
-                    {
-                        storageFileResults.Add(workspace);
-                    }
-                }
+                AppendWorkspacesFromWorkspaceEntries(storageFileResults, storageFile.BackupWorkspaces.Folders, cursorInstance);
+                AppendWorkspacesFromWorkspaceEntries(storageFileResults, storageFile.BackupWorkspaces.Workspaces, cursorInstance);
             }
         }
         catch (Exception ex)
@@ -161,6 +165,44 @@ public sealed class CursorWorkspacesApi
         }
 
         return storageFileResults;
+    }
+
+    private void AppendWorkspacesFromWorkspaceEntries(
+        List<CursorWorkspace> storageFileResults,
+        IEnumerable<WorkspaceEntry>? entries,
+        CursorInstance cursorInstance)
+    {
+        if (entries is null)
+        {
+            return;
+        }
+
+        foreach (var entry in entries.Where(x => x != null))
+        {
+            bool isWorkspaceFile = false;
+            var uri = entry.FolderUri;
+            if (entry.Workspace?.ConfigPath is not null)
+            {
+                isWorkspaceFile = true;
+                uri = entry.Workspace.ConfigPath;
+            }
+
+            if (uri is null)
+            {
+                continue;
+            }
+
+            var workspace = ParseUriAndAuthority(uri, entry.RemoteAuthority, cursorInstance, isWorkspaceFile);
+            if (workspace != null)
+            {
+                if (!string.IsNullOrWhiteSpace(entry.Label))
+                {
+                    workspace.CursorLabel = entry.Label.Trim();
+                }
+
+                storageFileResults.Add(workspace);
+            }
+        }
     }
 
     private List<CursorWorkspace> GetWorkspacesInVscdb(CursorInstance cursorInstance, string filePath)
@@ -217,6 +259,11 @@ public sealed class CursorWorkspacesApi
                 var workspace = ParseUriAndAuthority(uri, entry.RemoteAuthority, cursorInstance, isWorkspaceFile);
                 if (workspace != null)
                 {
+                    if (!string.IsNullOrWhiteSpace(entry.Label))
+                    {
+                        workspace.CursorLabel = entry.Label.Trim();
+                    }
+
                     dbFileResults.Add(workspace);
                 }
             }
@@ -231,5 +278,106 @@ public sealed class CursorWorkspacesApi
         }
 
         return dbFileResults;
+    }
+
+    /// <summary>
+    /// 扫描 <c>User/workspaceStorage/*/workspace.json</c>。此处保留「每个远程连接」的完整 folder URI，
+    /// 而 <see cref="GetWorkspacesInVscdb"/> 中的最近打开列表常按路径去重，同路径多 SSH 会只剩一条。
+    /// </summary>
+    private List<CursorWorkspace> GetWorkspacesFromWorkspaceStorage(CursorInstance cursorInstance)
+    {
+        var list = new List<CursorWorkspace>();
+        var baseDir = Path.Combine(cursorInstance.AppData, "User", "workspaceStorage");
+        if (!Directory.Exists(baseDir))
+        {
+            return list;
+        }
+
+        foreach (var dir in Directory.EnumerateDirectories(baseDir))
+        {
+            var wsJson = Path.Combine(dir, "workspace.json");
+            if (!File.Exists(wsJson))
+            {
+                continue;
+            }
+
+            try
+            {
+                string json = File.ReadAllText(wsJson);
+                var model = JsonSerializer.Deserialize<WorkspaceStorageRoot>(json);
+                if (model is null)
+                {
+                    continue;
+                }
+
+                bool isWorkspaceFile = false;
+                string? uri = model.Folder;
+                if (model.Workspace?.ConfigPath is not null)
+                {
+                    isWorkspaceFile = true;
+                    uri = model.Workspace.ConfigPath;
+                }
+
+                if (uri is null)
+                {
+                    continue;
+                }
+
+                var workspace = ParseUriAndAuthority(uri, model.RemoteAuthority, cursorInstance, isWorkspaceFile);
+                if (workspace != null)
+                {
+                    list.Add(workspace);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Exception($"Failed to read workspace storage {wsJson}", ex, GetType());
+            }
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// <c>~/.ssh/config</c> 里配置的 Host 在「尚未用 Cursor 打开过远程文件夹」时不会出现在 workspaceStorage / 历史中；
+    /// 为每个尚未出现的别名补一条可启动的 <c>vscode-remote://</c> 项。
+    /// </summary>
+    /// <param name="globalKnownSshHosts">
+    /// 已在任意 Cursor 数据目录中出现过的 SSH 主机标识（可变异；占位项加入后也会写入，避免多实例重复占位）。
+    /// </param>
+    private List<CursorWorkspace> GetWorkspacesFromOpenSshConfig(CursorInstance cursorInstance, HashSet<string> globalKnownSshHosts)
+    {
+        var list = new List<CursorWorkspace>();
+
+        IReadOnlyList<string> aliases;
+        try
+        {
+            aliases = SshConfigReader.EnumerateHostAliasesFromDefaultConfig();
+        }
+        catch
+        {
+            return list;
+        }
+
+        foreach (var alias in aliases)
+        {
+            if (globalKnownSshHosts.Contains(alias))
+            {
+                continue;
+            }
+
+            string uri = SshRemoteUriBuilder.BuildFolderUri(alias, "/");
+            var workspace = ParseUriAndAuthority(uri, null, cursorInstance, false);
+            if (workspace == null)
+            {
+                continue;
+            }
+
+            workspace.IsFromSshConfigOnly = true;
+            list.Add(workspace);
+            globalKnownSshHosts.Add(alias);
+        }
+
+        return list;
     }
 }

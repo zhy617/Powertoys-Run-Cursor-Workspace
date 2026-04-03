@@ -1,0 +1,14 @@
+{
+  "ID": "A7B9C8D1E2F345678901234567890AB",
+  "Disabled": false,
+  "ActionKeyword": "}",
+  "Name": "Cursor 工作区",
+  "Author": "Powertoys-Run-Cursor-Workspace",
+  "Version": "1.0.0",
+  "Language": "csharp",
+  "Website": "https://github.com/",
+  "ExecuteFileName": "Community.PowerToys.Run.Plugin.CursorWorkspaces.dll",
+  "IsGlobal": false,
+  "IcoPathDark": "Images\\cursor.dark.png",
+  "IcoPathLight": "Images\\cursor.light.png"
+}

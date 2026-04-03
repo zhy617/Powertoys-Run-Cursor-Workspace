@@ -15,4 +15,7 @@ internal static class PluginStrings
     public const string CopyPath = "复制路径";
     public const string OpenInExplorer = "在资源管理器中打开";
     public const string OpenInConsole = "在终端中打开";
+
+    /// <summary>仅 ssh config、尚未在 Cursor 中打开过远程文件夹的补充项。</summary>
+    public const string SshConfigHostOnly = "ssh config（尚未在 Cursor 打开过远程文件夹）";
 }

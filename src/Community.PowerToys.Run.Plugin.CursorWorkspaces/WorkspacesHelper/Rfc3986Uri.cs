@@ -20,15 +20,59 @@ public partial class Rfc3986Uri
 
     public static Rfc3986Uri? Parse([StringSyntax("Uri")] string uriString)
     {
-        return uriString is not null && Rfc3986().Match(uriString) is { Success: true } match
-            ? new Rfc3986Uri
+        if (uriString is null)
+        {
+            return null;
+        }
+
+        if (Rfc3986().Match(uriString) is { Success: true } match)
+        {
+            return new Rfc3986Uri
             {
                 Scheme = match.Groups["scheme"].Value,
                 Authority = match.Groups["authority"].Value,
                 Path = match.Groups["path"].Value,
                 Query = match.Groups["query"].Value,
                 Fragment = match.Groups["fragment"].Value,
-            }
-            : null;
+            };
+        }
+
+        return TryParseVscodeRemoteLoose(uriString);
+    }
+
+    /// <summary>新版 Cursor 的 authority 可能极长或含非常规字符，正则不匹配时用 <c>vscode-remote://</c> 前缀做宽松拆分。</summary>
+    private static Rfc3986Uri? TryParseVscodeRemoteLoose(string uriString)
+    {
+        const string prefix = "vscode-remote://";
+        if (!uriString.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        ReadOnlySpan<char> rest = uriString.AsSpan(prefix.Length);
+        int slash = rest.IndexOf('/');
+        if (slash < 0)
+        {
+            return new Rfc3986Uri
+            {
+                Scheme = "vscode-remote",
+                Authority = rest.ToString(),
+                Path = "/",
+            };
+        }
+
+        string authority = rest[..slash].ToString();
+        string path = rest[slash..].ToString();
+        if (string.IsNullOrEmpty(path))
+        {
+            path = "/";
+        }
+
+        return new Rfc3986Uri
+        {
+            Scheme = "vscode-remote",
+            Authority = authority,
+            Path = path,
+        };
     }
 }

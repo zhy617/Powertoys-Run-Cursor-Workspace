@@ -163,12 +163,25 @@ public static class CursorInstances
             return false;
         }
 
+        // 旧版 / 便携：用户数据根目录下的 storage.json
         if (File.Exists(Path.Combine(root, "storage.json")))
         {
             return true;
         }
 
-        return File.Exists(Path.Combine(root, "User", "globalStorage", "state.vscdb"));
+        string globalStorage = Path.Combine(root, "User", "globalStorage");
+        // 当前 Cursor / VS Code：状态库与（大）storage 均在 globalStorage 下
+        if (File.Exists(Path.Combine(globalStorage, "state.vscdb")))
+        {
+            return true;
+        }
+
+        if (File.Exists(Path.Combine(globalStorage, "storage.json")))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static string ResolveCursorAppDataRoot(string installDir)
