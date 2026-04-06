@@ -1,2 +1,3 @@
-- Add the hostname display of ssh instance
-- Fix the missing workspace of ssh instance
+# PowerToys Plugin Cursor Workspace
+
+- fix the author and version bugs

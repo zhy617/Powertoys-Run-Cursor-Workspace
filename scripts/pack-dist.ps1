@@ -1,4 +1,5 @@
 # Pack x64 and ARM64 Release outputs into dist/ as CursorWorkspace-v{version}-win-{rid}.zip
+# Syncs Version in src/.../plugin.json to match -Version, then copies it into Release outputs before zipping.
 # Usage: .\scripts\pack-dist.ps1 -Version 1.0.0
 #        .\scripts\pack-dist.ps1 -Version v2.3.4 -Build
 param(
@@ -19,6 +20,17 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     throw 'Version must not be empty.'
 }
 
+$pluginJsonPath = Join-Path $PluginRoot 'plugin.json'
+if (-not (Test-Path -LiteralPath $pluginJsonPath)) {
+    throw "plugin.json not found: $pluginJsonPath"
+}
+$pluginJsonText = [System.IO.File]::ReadAllText($pluginJsonPath)
+if ($pluginJsonText -notmatch '"Version"\s*:\s*"[^"]*"') {
+    throw "Could not find `"Version`" in plugin.json: $pluginJsonPath"
+}
+$pluginJsonText = [regex]::Replace($pluginJsonText, '("Version"\s*:\s*")[^"]*(")', "`${1}$Version`${2}", 1)
+[System.IO.File]::WriteAllText($pluginJsonPath, $pluginJsonText, [System.Text.UTF8Encoding]::new($false))
+
 if ($Build) {
     Push-Location $PluginRoot
     try {
@@ -30,13 +42,13 @@ if ($Build) {
     }
 }
 
+$x64Release = Join-Path $PluginRoot 'bin\x64\Release'
+$arm64Release = Join-Path $PluginRoot 'bin\ARM64\Release'
+
 if (Test-Path -LiteralPath $DistDir) {
     Remove-Item -LiteralPath $DistDir -Recurse -Force
 }
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
-
-$x64Release = Join-Path $PluginRoot 'bin\x64\Release'
-$arm64Release = Join-Path $PluginRoot 'bin\ARM64\Release'
 
 $pairs = @(
     [pscustomobject]@{ ReleaseDir = $x64Release; Rid = 'win-x64' }
@@ -48,6 +60,7 @@ foreach ($p in $pairs) {
     if (-not (Test-Path -LiteralPath $releaseDir)) {
         throw "Release output not found (build Release first): $releaseDir"
     }
+    Copy-Item -LiteralPath $pluginJsonPath -Destination (Join-Path $releaseDir 'plugin.json') -Force
     $items = @(Get-ChildItem -LiteralPath $releaseDir -Force)
     if ($items.Count -eq 0) {
         throw "Release folder is empty: $releaseDir"

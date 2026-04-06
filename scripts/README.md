@@ -33,7 +33,7 @@ Get-ChildItem .\dist\* | ForEach-Object {
 # Release
 ## Win
 ```shell
-$VERSION = "v1.1.0"
+$VERSION = "v1.2.0"
 gh release create $VERSION `
   --title "$VERSION" `
   --notes-file .\scripts\RELEASE_NOTES.md `
