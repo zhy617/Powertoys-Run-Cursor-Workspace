@@ -4,7 +4,7 @@
   "ActionKeyword": "(",
   "Name": "Cursor 工作区",
   "Author": "zhy617",
-  "Version": "1.2.0",
+  "Version": "1.2.1",
   "Language": "csharp",
   "Website": "https://github.com/",
   "ExecuteFileName": "Community.PowerToys.Run.Plugin.CursorWorkspaces.dll",

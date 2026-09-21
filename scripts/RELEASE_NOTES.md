@@ -1,3 +1,3 @@
-# PowerToys Plugin Cursor Workspace
+## v1.2.1
 
-- fix the author and version bugs
+- Fix the first workspace launch opening Cursor with a hidden window.

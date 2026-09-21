@@ -134,7 +134,6 @@ public class Main : IPlugin, IPluginI18n, IContextMenu
                             Arguments = a.WorkspaceType == WorkspaceType.ProjectFolder
                                 ? $"--folder-uri {a.Path}"
                                 : $"--file-uri {a.Path}",
-                            WindowStyle = ProcessWindowStyle.Hidden,
                         };
                         Process.Start(process);
                         return true;
